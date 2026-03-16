@@ -57,7 +57,7 @@ class STGraphRAGClient:
 
     async def insert(self, text: str, doc_id: str | None = None) -> None:
         """Insert a document into the knowledge graph."""
-        await self.rag.ainsert(text, doc_id=doc_id)
+        await self.rag.ainsert(text, ids=doc_id)
 
     async def query(self, question: str, mode: str | None = None) -> str:
         """Query the knowledge graph and return context text."""

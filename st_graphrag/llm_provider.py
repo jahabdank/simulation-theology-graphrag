@@ -28,7 +28,8 @@ async def claude_code_llm(
     """Async LLM function that calls Claude Code CLI.
 
     This function matches the signature LightRAG expects for llm_model_func.
-    It calls `claude -p` with --output-format json and returns the text result.
+    It pipes the prompt via stdin to avoid shell parsing issues with special
+    characters in LightRAG's extraction prompts.
     """
     global _semaphore, _config
 
@@ -37,16 +38,13 @@ async def claude_code_llm(
     if _semaphore is None:
         _semaphore = asyncio.Semaphore(_config.max_concurrent)
 
+    # Build command — prompt is piped via stdin, not as an argument
     cmd = [
         "claude",
         "-p",
-        prompt,
-        "--output-format",
-        "json",
-        "--max-turns",
-        str(_config.max_turns),
-        "--model",
-        _config.model,
+        "--output-format", "json",
+        "--max-turns", str(_config.max_turns),
+        "--model", _config.model,
     ]
 
     if system_prompt:
@@ -61,11 +59,12 @@ async def claude_code_llm(
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
+                proc.communicate(input=prompt.encode("utf-8")),
                 timeout=_config.timeout,
             )
         except asyncio.TimeoutError:
