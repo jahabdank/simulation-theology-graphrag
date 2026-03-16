@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from st_graphrag.config import load_config
 from st_graphrag.ingest import ingest_book, ingest_chapter
+from st_graphrag.logging_setup import setup_logging
 
 
 def main():
@@ -37,10 +38,10 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    level = logging.DEBUG if args.verbose else logging.INFO
+    log_path = setup_logging(level=level, session_name="ingest")
+    logger = logging.getLogger(__name__)
+    logger.info("Log file: %s", log_path)
 
     config = load_config(args.config)
 

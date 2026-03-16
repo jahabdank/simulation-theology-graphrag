@@ -208,3 +208,6 @@ __marimo__/
 
 # LightRAG data (generated, local)
 lightrag_data/
+
+# Log files
+logs/

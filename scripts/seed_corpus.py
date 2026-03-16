@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from st_graphrag.config import load_config
+from st_graphrag.logging_setup import setup_logging
 from st_graphrag.seed import seed_corpus
 
 
@@ -41,10 +42,10 @@ def main():
     )
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    level = logging.DEBUG if args.verbose else logging.INFO
+    log_path = setup_logging(level=level, session_name="seed")
+    logger = logging.getLogger(__name__)
+    logger.info("Log file: %s", log_path)
 
     config = load_config(args.config)
     asyncio.run(seed_corpus(config=config, dry_run=args.dry_run, single_file=args.file))
