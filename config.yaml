@@ -1,0 +1,22 @@
+claude:
+  model: "opus"                    # claude model: opus, sonnet, haiku
+  max_turns: 1                     # single-turn for extraction
+  timeout: 120                     # seconds per CLI call
+  max_concurrent: 2                # parallel claude -p calls
+
+embedding:
+  model_name: "all-MiniLM-L6-v2"  # sentence-transformers model
+  embedding_dim: 384               # output dimension for this model
+
+lightrag:
+  working_dir: "./lightrag_data"   # graph + vector storage directory
+  chunk_token_size: 1200
+  chunk_overlap_token_size: 100
+  entity_extract_max_gleaning: 1   # extra extraction passes
+  query:
+    default_mode: "hybrid"
+    top_k: 10
+
+paths:
+  corpus_dir: "../simulation-theology-corpus/corpus"
+  sdf_dir: "../simulation-theology-training-data/sdf"
