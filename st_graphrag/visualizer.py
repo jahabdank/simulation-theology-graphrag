@@ -16,17 +16,44 @@ logger = logging.getLogger(__name__)
 # Load extra layout algorithms (dagre, cola, klay, etc.)
 cyto.load_extra_layouts()
 
-# Entity type → color mapping
+# --- Brand Palette ---
+BRAND = {
+    # Primary
+    "blue": "#6B8CFF",
+    "coral": "#F07050",
+    "orange": "#F28C50",
+    "peach": "#F9B870",
+    "light_peach": "#F5C4A0",
+    # Backgrounds
+    "navy": "#181A2E",
+    "navy_light": "#1E2040",
+    "cream": "#FAF5F0",
+    "white": "#FFFFFF",
+    # Text
+    "text_dark": "#1A1A2E",
+    "text_grey": "#6B7280",
+    "text_light": "#E5E7EB",
+    # Status
+    "success": "#10B981",
+    "warning": "#FFD700",
+    "warning_orange": "#F28C50",
+    "error": "#FF4444",
+    # Other
+    "inactive": "#555555",
+    "font": "'Open Sans', 'Segoe UI', system-ui, -apple-system, sans-serif",
+}
+
+# Entity type → color mapping (using brand palette)
 TYPE_COLORS = {
-    "axiom": "#e94560",
-    "entity": "#f5a623",
-    "concept": "#4a9eff",
-    "architectural_component": "#53d8fb",
-    "biblical_figure": "#2ecc71",
-    "religious_concept": "#9b59b6",
-    "st_term": "#1abc9c",
-    "scripture_mapping": "#95a5a6",
-    "UNKNOWN": "#6c757d",
+    "axiom": BRAND["coral"],           # F07050
+    "entity": BRAND["orange"],          # F28C50
+    "concept": BRAND["blue"],           # 6B8CFF
+    "architectural_component": "#8B9FFF",  # COPY shade
+    "biblical_figure": BRAND["success"],   # 10B981
+    "religious_concept": "#9B59B6",
+    "st_term": BRAND["peach"],          # F9B870
+    "scripture_mapping": "#9CA3AF",     # Source Files zone
+    "UNKNOWN": BRAND["text_grey"],      # 6B7280
 }
 
 LAYOUT_OPTIONS = [
@@ -60,7 +87,6 @@ def _load_graph_data(working_dir: Path):
 def _build_cytoscape_elements(G: nx.Graph):
     """Convert NetworkX graph to Cytoscape elements format."""
     degrees = dict(G.degree())
-    max_deg = max(degrees.values()) if degrees else 1
 
     elements = []
 
@@ -101,17 +127,14 @@ def _build_cytoscape_elements(G: nx.Graph):
 
 def _get_entity_source_text(entity_name, entity_chunks, text_chunks):
     """Get the original source text for an entity from chunk storage."""
-    ec_key = entity_name
-    # Try case variations
-    for key in [ec_key, ec_key.lower(), ec_key.title()]:
+    for key in [entity_name, entity_name.lower(), entity_name.title()]:
         if key in entity_chunks:
             chunk_data = entity_chunks[key]
             chunk_ids = chunk_data.get("chunk_ids", [])
             texts = []
-            for cid in chunk_ids[:3]:  # limit to 3 chunks
+            for cid in chunk_ids[:3]:
                 for tk, tv in text_chunks.items():
                     if isinstance(tv, dict) and cid in str(tv):
-                        # text_chunks has nested structure
                         if cid in tv:
                             texts.append(tv[cid].get("content", ""))
                     elif tk == cid:
@@ -122,9 +145,8 @@ def _get_entity_source_text(entity_name, entity_chunks, text_chunks):
 
 
 def _build_stylesheet():
-    """Build the Cytoscape CSS stylesheet."""
+    """Build the Cytoscape CSS stylesheet with brand colors."""
     return [
-        # Default node style
         {
             "selector": "node",
             "style": {
@@ -132,77 +154,98 @@ def _build_stylesheet():
                 "width": "data(size)",
                 "height": "data(size)",
                 "background-color": "data(color)",
-                "color": "#ffffff",
+                "color": BRAND["text_light"],
                 "font-size": "10px",
+                "font-family": BRAND["font"],
                 "text-valign": "bottom",
                 "text-halign": "center",
                 "text-margin-y": "5px",
-                "text-outline-color": "#1a1a2e",
+                "text-outline-color": BRAND["navy"],
                 "text-outline-width": "2px",
                 "border-width": "1px",
-                "border-color": "#333",
+                "border-color": BRAND["navy_light"],
             },
         },
-        # Default edge style
         {
             "selector": "edge",
             "style": {
                 "width": "data(edge_width)",
-                "line-color": "#444466",
-                "target-arrow-color": "#444466",
+                "line-color": "#2A2D4A",
+                "target-arrow-color": "#2A2D4A",
                 "target-arrow-shape": "triangle",
                 "curve-style": "bezier",
-                "opacity": 0.4,
+                "opacity": 0.35,
             },
         },
-        # Selected node
         {
             "selector": "node:selected",
             "style": {
                 "border-width": "3px",
-                "border-color": "#ffffff",
-                "background-color": "#ff6b6b",
+                "border-color": BRAND["white"],
+                "background-color": BRAND["coral"],
                 "font-size": "14px",
                 "font-weight": "bold",
                 "z-index": 9999,
             },
         },
-        # Selected edge
         {
             "selector": "edge:selected",
             "style": {
-                "line-color": "#ff6b6b",
-                "target-arrow-color": "#ff6b6b",
+                "line-color": BRAND["coral"],
+                "target-arrow-color": BRAND["coral"],
                 "opacity": 1.0,
                 "width": 3,
             },
         },
-        # Search-highlighted nodes
         {
             "selector": ".highlighted",
             "style": {
                 "border-width": "3px",
-                "border-color": "#ffff00",
-                "background-color": "#ffcc00",
+                "border-color": BRAND["warning"],
                 "font-size": "13px",
                 "z-index": 9998,
             },
         },
-        # Dimmed (non-matching) nodes
         {
             "selector": ".dimmed",
-            "style": {
-                "opacity": 0.15,
-            },
+            "style": {"opacity": 0.15},
         },
-        # Hidden nodes (filtered out)
         {
             "selector": ".hidden",
-            "style": {
-                "display": "none",
-            },
+            "style": {"display": "none"},
         },
     ]
+
+
+# --- Reusable style dicts ---
+
+_BUTTON_SEARCH = {
+    "flex": "1", "padding": "8px",
+    "backgroundColor": BRAND["blue"], "color": BRAND["white"],
+    "border": "none", "borderRadius": "4px", "cursor": "pointer",
+    "fontFamily": BRAND["font"], "fontWeight": "600",
+}
+
+_BUTTON_LLM = {
+    "flex": "1", "padding": "8px",
+    "backgroundColor": BRAND["coral"], "color": BRAND["white"],
+    "border": "none", "borderRadius": "4px", "cursor": "pointer",
+    "fontFamily": BRAND["font"], "fontWeight": "600",
+}
+
+_BUTTON_LLM_LOADING = {
+    "flex": "1", "padding": "8px",
+    "backgroundColor": BRAND["inactive"], "color": BRAND["text_light"],
+    "border": "none", "borderRadius": "4px", "cursor": "wait",
+    "fontFamily": BRAND["font"], "fontWeight": "600",
+}
+
+_BUTTON_CLEAR = {
+    "padding": "8px 12px",
+    "backgroundColor": BRAND["navy_light"], "color": BRAND["text_light"],
+    "border": f"1px solid {BRAND['text_grey']}", "borderRadius": "4px",
+    "cursor": "pointer", "fontFamily": BRAND["font"],
+}
 
 
 def create_app(config=None):
@@ -213,9 +256,7 @@ def create_app(config=None):
     working_dir = Path(config.lightrag.working_dir)
     G, text_chunks, entity_chunks = _load_graph_data(working_dir)
     elements = _build_cytoscape_elements(G)
-    degrees = dict(G.degree())
 
-    # Get all entity types for filter
     entity_types = sorted(set(
         data.get("entity_type", "UNKNOWN")
         for _, data in G.nodes(data=True)
@@ -230,7 +271,6 @@ def create_app(config=None):
     total_nodes = G.number_of_nodes()
     total_edges = G.number_of_edges()
 
-    # Background callback manager for long-running LLM queries
     import diskcache
     cache = diskcache.Cache(str(working_dir / ".dash_cache"))
     background_callback_manager = DiskcacheManager(cache)
@@ -239,9 +279,9 @@ def create_app(config=None):
 
     app.layout = html.Div(
         style={
-            "fontFamily": "'Segoe UI', system-ui, -apple-system, sans-serif",
-            "backgroundColor": "#0f0f1a",
-            "color": "#e0e0e0",
+            "fontFamily": BRAND["font"],
+            "backgroundColor": BRAND["navy"],
+            "color": BRAND["text_light"],
             "height": "100vh",
             "display": "flex",
             "flexDirection": "column",
@@ -251,37 +291,43 @@ def create_app(config=None):
             # Header bar
             html.Div(
                 style={
-                    "padding": "8px 16px",
-                    "backgroundColor": "#1a1a2e",
+                    "padding": "10px 20px",
+                    "background": f"linear-gradient(135deg, {BRAND['navy']}, {BRAND['navy_light']})",
                     "display": "flex",
                     "alignItems": "center",
                     "gap": "16px",
-                    "borderBottom": "1px solid #333",
+                    "borderBottom": f"2px solid {BRAND['blue']}",
                     "flexShrink": "0",
                 },
                 children=[
                     html.H3(
                         "Simulation Theology Knowledge Graph",
-                        style={"margin": "0", "color": "#e94560", "whiteSpace": "nowrap"},
+                        style={
+                            "margin": "0",
+                            "color": BRAND["blue"],
+                            "whiteSpace": "nowrap",
+                            "fontWeight": "700",
+                            "letterSpacing": "0.5px",
+                        },
                     ),
                     dcc.Dropdown(
                         id="layout-select",
                         options=LAYOUT_OPTIONS,
                         value="cose",
-                        style={"width": "220px", "color": "#000"},
+                        style={"width": "220px", "color": BRAND["text_dark"]},
                         clearable=False,
                     ),
                     dcc.Dropdown(
                         id="type-filter",
                         options=type_filter_options,
                         value="all",
-                        style={"width": "250px", "color": "#000"},
+                        style={"width": "250px", "color": BRAND["text_dark"]},
                         clearable=False,
                     ),
                     html.Span(
                         id="stats",
-                        children=f"Nodes: {total_nodes} | Edges: {total_edges}",
-                        style={"color": "#888", "fontSize": "13px"},
+                        children=f"Nodes: {total_nodes}  |  Edges: {total_edges}",
+                        style={"color": BRAND["text_grey"], "fontSize": "13px"},
                     ),
                 ],
             ),
@@ -292,10 +338,10 @@ def create_app(config=None):
                     # Left panel
                     html.Div(
                         style={
-                            "width": "400px",
-                            "minWidth": "350px",
-                            "backgroundColor": "#16162a",
-                            "borderRight": "1px solid #333",
+                            "width": "420px",
+                            "minWidth": "360px",
+                            "backgroundColor": BRAND["navy_light"],
+                            "borderRight": f"1px solid #2A2D4A",
                             "display": "flex",
                             "flexDirection": "column",
                             "overflow": "hidden",
@@ -304,8 +350,8 @@ def create_app(config=None):
                             # Search section
                             html.Div(
                                 style={
-                                    "padding": "12px",
-                                    "borderBottom": "1px solid #333",
+                                    "padding": "14px",
+                                    "borderBottom": f"1px solid #2A2D4A",
                                     "flexShrink": "0",
                                 },
                                 children=[
@@ -316,57 +362,23 @@ def create_app(config=None):
                                         debounce=True,
                                         style={
                                             "width": "100%",
-                                            "padding": "8px 12px",
-                                            "backgroundColor": "#1a1a2e",
-                                            "border": "1px solid #444",
-                                            "borderRadius": "4px",
-                                            "color": "#e0e0e0",
+                                            "padding": "10px 14px",
+                                            "backgroundColor": BRAND["navy"],
+                                            "border": f"1px solid #2A2D4A",
+                                            "borderRadius": "6px",
+                                            "color": BRAND["text_light"],
                                             "fontSize": "14px",
-                                            "marginBottom": "8px",
+                                            "fontFamily": BRAND["font"],
+                                            "marginBottom": "10px",
                                             "boxSizing": "border-box",
                                         },
                                     ),
                                     html.Div(
                                         style={"display": "flex", "gap": "8px"},
                                         children=[
-                                            html.Button(
-                                                "Search",
-                                                id="search-btn",
-                                                style={
-                                                    "flex": "1",
-                                                    "padding": "8px",
-                                                    "backgroundColor": "#4a9eff",
-                                                    "color": "white",
-                                                    "border": "none",
-                                                    "borderRadius": "4px",
-                                                    "cursor": "pointer",
-                                                },
-                                            ),
-                                            html.Button(
-                                                "Ask LLM",
-                                                id="llm-query-btn",
-                                                style={
-                                                    "flex": "1",
-                                                    "padding": "8px",
-                                                    "backgroundColor": "#e94560",
-                                                    "color": "white",
-                                                    "border": "none",
-                                                    "borderRadius": "4px",
-                                                    "cursor": "pointer",
-                                                },
-                                            ),
-                                            html.Button(
-                                                "Clear",
-                                                id="clear-btn",
-                                                style={
-                                                    "padding": "8px 12px",
-                                                    "backgroundColor": "#333",
-                                                    "color": "white",
-                                                    "border": "none",
-                                                    "borderRadius": "4px",
-                                                    "cursor": "pointer",
-                                                },
-                                            ),
+                                            html.Button("Search", id="search-btn", style=_BUTTON_SEARCH),
+                                            html.Button("Ask LLM", id="llm-query-btn", style=_BUTTON_LLM),
+                                            html.Button("Clear", id="clear-btn", style=_BUTTON_CLEAR),
                                         ],
                                     ),
                                 ],
@@ -382,9 +394,10 @@ def create_app(config=None):
                                 children=[
                                     html.Div(
                                         style={
-                                            "color": "#666",
+                                            "color": BRAND["text_grey"],
                                             "textAlign": "center",
-                                            "marginTop": "40px",
+                                            "marginTop": "60px",
+                                            "fontSize": "14px",
                                         },
                                         children="Click a node or edge to see details",
                                     )
@@ -411,11 +424,12 @@ def create_app(config=None):
                                     "position": "absolute",
                                     "bottom": "12px",
                                     "right": "12px",
-                                    "backgroundColor": "rgba(26, 26, 46, 0.9)",
-                                    "padding": "8px 12px",
-                                    "borderRadius": "6px",
-                                    "border": "1px solid #333",
+                                    "backgroundColor": f"rgba(24, 26, 46, 0.92)",
+                                    "padding": "10px 14px",
+                                    "borderRadius": "8px",
+                                    "border": f"1px solid #2A2D4A",
                                     "fontSize": "11px",
+                                    "fontFamily": BRAND["font"],
                                 },
                                 children=[
                                     html.Div(
@@ -423,7 +437,7 @@ def create_app(config=None):
                                             "display": "flex",
                                             "alignItems": "center",
                                             "gap": "6px",
-                                            "marginBottom": "3px",
+                                            "marginBottom": "4px",
                                         },
                                         children=[
                                             html.Span(
@@ -435,7 +449,10 @@ def create_app(config=None):
                                                     "display": "inline-block",
                                                 },
                                             ),
-                                            html.Span(etype),
+                                            html.Span(
+                                                etype,
+                                                style={"color": BRAND["text_light"]},
+                                            ),
                                         ],
                                     )
                                     for etype, color in TYPE_COLORS.items()
@@ -446,7 +463,6 @@ def create_app(config=None):
                     ),
                 ],
             ),
-            # Hidden store for LLM loading state
             dcc.Store(id="llm-loading-state", data=False),
         ],
     )
@@ -460,18 +476,14 @@ def create_app(config=None):
         prevent_initial_call=True,
     )
     def display_detail(node_data, edge_data):
-        """Show detail panel when a node or edge is clicked."""
         ctx = callback_context
         if not ctx.triggered:
             return no_update
-
         trigger = ctx.triggered[0]["prop_id"]
-
         if "tapNodeData" in trigger and node_data:
             return _render_node_detail(node_data, G, entity_chunks, text_chunks)
         elif "tapEdgeData" in trigger and edge_data:
             return _render_edge_detail(edge_data)
-
         return no_update
 
     @app.callback(
@@ -482,16 +494,12 @@ def create_app(config=None):
         prevent_initial_call=True,
     )
     def handle_search(search_clicks, clear_clicks, search_text):
-        """Highlight matching nodes on search, or clear highlights."""
         ctx = callback_context
         if not ctx.triggered:
             return no_update
-
         trigger = ctx.triggered[0]["prop_id"]
-
         if "clear-btn" in trigger:
             return _build_stylesheet()
-
         if not search_text or not search_text.strip():
             return _build_stylesheet()
 
@@ -505,31 +513,26 @@ def create_app(config=None):
         if not matching_ids:
             return _build_stylesheet()
 
-        # Add highlight/dim classes via stylesheet
         stylesheet = _build_stylesheet()
-        # Dim all non-matching nodes
         stylesheet.append({
             "selector": "node",
-            "style": {"opacity": 0.15, "font-size": "8px"},
+            "style": {"opacity": 0.12, "font-size": "8px"},
         })
-        # Highlight matching nodes
         for nid in matching_ids:
             stylesheet.append({
                 "selector": f'node[id = "{nid}"]',
                 "style": {
                     "opacity": 1.0,
                     "border-width": "3px",
-                    "border-color": "#ffff00",
+                    "border-color": BRAND["warning"],
                     "font-size": "13px",
                     "z-index": 9998,
                 },
             })
-        # Keep edges to matching nodes visible
         stylesheet.append({
             "selector": "edge",
-            "style": {"opacity": 0.05},
+            "style": {"opacity": 0.04},
         })
-
         return stylesheet
 
     @app.callback(
@@ -540,42 +543,25 @@ def create_app(config=None):
         running=[
             (Output("llm-query-btn", "disabled"), True, False),
             (Output("llm-query-btn", "children"), "Querying...", "Ask LLM"),
-            (Output("llm-query-btn", "style"), {
-                "flex": "1", "padding": "8px",
-                "backgroundColor": "#666", "color": "white",
-                "border": "none", "borderRadius": "4px",
-                "cursor": "wait",
-            }, {
-                "flex": "1", "padding": "8px",
-                "backgroundColor": "#e94560", "color": "white",
-                "border": "none", "borderRadius": "4px",
-                "cursor": "pointer",
-            }),
+            (Output("llm-query-btn", "style"), _BUTTON_LLM_LOADING, _BUTTON_LLM),
         ],
         background=True,
         manager=background_callback_manager,
     )
     def handle_llm_query(n_clicks, query_text):
-        """Run an LLM query against the knowledge graph (background thread)."""
         if not query_text or not query_text.strip():
             return html.Div(
                 "Enter a question in the search box first.",
-                style={"color": "#e94560", "padding": "12px"},
+                style={"color": BRAND["error"], "padding": "12px"},
             )
 
-        # Show loading state immediately
-        loading_header = [
-            html.H4(
-                "LLM Query Result",
-                style={"color": "#e94560", "marginBottom": "8px"},
-            ),
+        header = [
+            html.H4("LLM Query Result", style={"color": BRAND["coral"], "marginBottom": "8px"}),
             html.Div(
                 f'Query: "{query_text}"',
                 style={
-                    "color": "#888",
-                    "fontSize": "12px",
-                    "marginBottom": "12px",
-                    "fontStyle": "italic",
+                    "color": BRAND["text_grey"], "fontSize": "12px",
+                    "marginBottom": "12px", "fontStyle": "italic",
                 },
             ),
         ]
@@ -583,38 +569,24 @@ def create_app(config=None):
         try:
             import asyncio
             from .client import STGraphRAGClient
-
             client = STGraphRAGClient()
-
-            # Run async query in a new event loop (safe from background thread)
             loop = asyncio.new_event_loop()
             try:
                 loop.run_until_complete(client.initialize())
-                result = loop.run_until_complete(
-                    client.query(query_text, mode="hybrid")
-                )
+                result = loop.run_until_complete(client.query(query_text, mode="hybrid"))
             finally:
                 loop.run_until_complete(client.finalize())
                 loop.close()
 
-            return html.Div(loading_header + [
-                html.Hr(style={"borderColor": "#333"}),
-                dcc.Markdown(
-                    result,
-                    style={
-                        "lineHeight": "1.6",
-                        "fontSize": "14px",
-                    },
-                ),
+            return html.Div(header + [
+                html.Hr(style={"borderColor": "#2A2D4A"}),
+                dcc.Markdown(result, style={"lineHeight": "1.6", "fontSize": "14px"}),
             ])
         except Exception as e:
             logger.error("LLM query failed: %s", e, exc_info=True)
-            return html.Div(loading_header + [
-                html.Hr(style={"borderColor": "#333"}),
-                html.Div(
-                    f"Query failed: {e}",
-                    style={"color": "#e94560", "padding": "12px"},
-                ),
+            return html.Div(header + [
+                html.Hr(style={"borderColor": "#2A2D4A"}),
+                html.Div(f"Query failed: {e}", style={"color": BRAND["error"], "padding": "12px"}),
             ])
 
     @app.callback(
@@ -622,7 +594,6 @@ def create_app(config=None):
         Input("layout-select", "value"),
     )
     def update_layout(layout_name):
-        """Change the graph layout algorithm."""
         return {"name": layout_name, "animate": True}
 
     @app.callback(
@@ -630,26 +601,21 @@ def create_app(config=None):
         Input("type-filter", "value"),
     )
     def filter_by_type(selected_type):
-        """Filter nodes by entity type."""
         if selected_type == "all":
             return elements
-
         filtered_node_ids = set()
         filtered = []
         for el in elements:
             data = el["data"]
-            if "source" not in data:  # node
+            if "source" not in data:
                 if data.get("entity_type") == selected_type:
                     filtered.append(el)
                     filtered_node_ids.add(data["id"])
-
-        # Include edges where both endpoints are visible
         for el in elements:
             data = el["data"]
-            if "source" in data:  # edge
+            if "source" in data:
                 if data["source"] in filtered_node_ids and data["target"] in filtered_node_ids:
                     filtered.append(el)
-
         return filtered
 
     return app
@@ -663,97 +629,83 @@ def _render_node_detail(node_data, G, entity_chunks, text_chunks):
     degree = node_data.get("degree", 0)
     color = TYPE_COLORS.get(etype, TYPE_COLORS["UNKNOWN"])
 
-    # Get connections
     neighbors = []
     if node_id in G:
         for neighbor in G.neighbors(node_id):
             edge_data = G.get_edge_data(node_id, neighbor, default={})
             edge_desc = edge_data.get("description", "")[:120]
             neighbors.append((neighbor, edge_desc))
-        # Also get predecessors (for directed graphs)
         if hasattr(G, "predecessors"):
             for pred in G.predecessors(node_id):
                 if pred != node_id and pred not in [n for n, _ in neighbors]:
                     edge_data = G.get_edge_data(pred, node_id, default={})
                     edge_desc = edge_data.get("description", "")[:120]
                     neighbors.append((pred, f"(incoming) {edge_desc}"))
-
     neighbors.sort(key=lambda x: x[0])
 
-    # Get source text from chunks
     source_text = _get_entity_source_text(node_id, entity_chunks, text_chunks)
 
     children = [
-        # Header
-        html.H3(node_id, style={"margin": "0 0 4px 0", "color": "#fff"}),
+        html.H3(node_id, style={"margin": "0 0 6px 0", "color": BRAND["white"]}),
         html.Div(
-            style={"display": "flex", "gap": "8px", "marginBottom": "12px"},
+            style={"display": "flex", "gap": "8px", "marginBottom": "14px"},
             children=[
                 html.Span(
                     etype,
                     style={
-                        "backgroundColor": color,
-                        "color": "white",
-                        "padding": "2px 10px",
-                        "borderRadius": "12px",
-                        "fontSize": "12px",
-                        "fontWeight": "bold",
+                        "backgroundColor": color, "color": BRAND["white"],
+                        "padding": "3px 12px", "borderRadius": "12px",
+                        "fontSize": "12px", "fontWeight": "600",
                     },
                 ),
                 html.Span(
                     f"{degree} connections",
-                    style={"color": "#888", "fontSize": "12px", "lineHeight": "24px"},
+                    style={"color": BRAND["text_grey"], "fontSize": "12px", "lineHeight": "24px"},
                 ),
             ],
         ),
-        # Description
-        html.H4("Description", style={"color": "#4a9eff", "marginBottom": "4px"}),
+        html.H4("Description", style={"color": BRAND["blue"], "marginBottom": "6px", "fontSize": "14px"}),
         dcc.Markdown(
             description,
-            style={"lineHeight": "1.6", "fontSize": "13px", "marginBottom": "16px"},
+            style={"lineHeight": "1.7", "fontSize": "13px", "marginBottom": "16px"},
         ),
     ]
 
-    # Source text section
     if source_text:
         children.extend([
-            html.Hr(style={"borderColor": "#333"}),
-            html.H4("Source Text", style={"color": "#2ecc71", "marginBottom": "4px"}),
+            html.Hr(style={"borderColor": "#2A2D4A", "margin": "16px 0"}),
+            html.H4("Source Text", style={"color": BRAND["success"], "marginBottom": "6px", "fontSize": "14px"}),
             dcc.Markdown(
                 source_text,
-                style={"lineHeight": "1.5", "fontSize": "12px", "color": "#bbb"},
+                style={"lineHeight": "1.6", "fontSize": "12px", "color": BRAND["light_peach"]},
             ),
         ])
 
-    # Connections section
     if neighbors:
         children.extend([
-            html.Hr(style={"borderColor": "#333"}),
+            html.Hr(style={"borderColor": "#2A2D4A", "margin": "16px 0"}),
             html.H4(
                 f"Connections ({len(neighbors)})",
-                style={"color": "#f5a623", "marginBottom": "8px"},
+                style={"color": BRAND["orange"], "marginBottom": "10px", "fontSize": "14px"},
             ),
         ])
         for neighbor_name, edge_desc in neighbors:
             n_type = G.nodes[neighbor_name].get("entity_type", "") if neighbor_name in G.nodes else ""
-            n_color = TYPE_COLORS.get(n_type, "#666")
+            n_color = TYPE_COLORS.get(n_type, BRAND["text_grey"])
             children.append(
                 html.Div(
                     style={
-                        "padding": "6px 8px",
+                        "padding": "8px 10px",
                         "marginBottom": "4px",
-                        "backgroundColor": "#1a1a2e",
+                        "backgroundColor": BRAND["navy"],
                         "borderRadius": "4px",
                         "borderLeft": f"3px solid {n_color}",
                     },
                     children=[
-                        html.Span(
-                            neighbor_name,
-                            style={"fontWeight": "bold", "fontSize": "13px"},
-                        ),
+                        html.Span(neighbor_name, style={"fontWeight": "600", "fontSize": "13px"}),
                         html.Div(
                             edge_desc,
-                            style={"fontSize": "11px", "color": "#888", "marginTop": "2px"},
+                            style={"fontSize": "11px", "color": BRAND["text_grey"], "marginTop": "3px"},
                         ) if edge_desc else None,
                     ],
                 )
@@ -779,45 +731,46 @@ def _render_edge_detail(edge_data):
                     html.Span(
                         kw,
                         style={
-                            "backgroundColor": "#333",
-                            "padding": "2px 8px",
-                            "borderRadius": "10px",
+                            "backgroundColor": BRAND["navy"],
+                            "border": f"1px solid #2A2D4A",
+                            "padding": "3px 10px",
+                            "borderRadius": "12px",
                             "fontSize": "11px",
                             "marginRight": "4px",
                             "marginBottom": "4px",
                             "display": "inline-block",
+                            "color": BRAND["peach"],
                         },
                     )
                 )
 
     return [
-        html.H3("Relationship", style={"margin": "0 0 8px 0", "color": "#fff"}),
+        html.H3("Relationship", style={"margin": "0 0 10px 0", "color": BRAND["white"]}),
         html.Div(
             style={
-                "padding": "12px",
-                "backgroundColor": "#1a1a2e",
-                "borderRadius": "6px",
-                "marginBottom": "12px",
+                "padding": "14px",
+                "backgroundColor": BRAND["navy"],
+                "borderRadius": "8px",
+                "marginBottom": "14px",
+                "border": f"1px solid #2A2D4A",
             },
             children=[
-                html.Span(source, style={"color": "#4a9eff", "fontWeight": "bold"}),
-                html.Span(" → ", style={"color": "#666", "margin": "0 8px"}),
-                html.Span(target, style={"color": "#f5a623", "fontWeight": "bold"}),
+                html.Span(source, style={"color": BRAND["blue"], "fontWeight": "700"}),
+                html.Span(" \u2192 ", style={"color": BRAND["text_grey"], "margin": "0 10px"}),
+                html.Span(target, style={"color": BRAND["orange"], "fontWeight": "700"}),
             ],
         ),
         html.Div(
             f"Weight: {weight:.1f}",
-            style={"color": "#888", "fontSize": "12px", "marginBottom": "12px"},
+            style={"color": BRAND["text_grey"], "fontSize": "12px", "marginBottom": "12px"},
         ),
-        # Keywords
         html.Div(
             keyword_badges,
             style={"marginBottom": "16px"},
         ) if keyword_badges else None,
-        # Description
-        html.H4("Description", style={"color": "#4a9eff", "marginBottom": "4px"}),
+        html.H4("Description", style={"color": BRAND["blue"], "marginBottom": "6px", "fontSize": "14px"}),
         dcc.Markdown(
             description,
-            style={"lineHeight": "1.6", "fontSize": "13px"},
+            style={"lineHeight": "1.7", "fontSize": "13px"},
         ),
     ]
