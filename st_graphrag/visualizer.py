@@ -306,6 +306,19 @@ _BTN_CLEAR = {
 }
 
 
+_TAB_STYLE = {
+    "padding": "8px 16px", "fontSize": "13px", "fontWeight": "500",
+    "backgroundColor": BRAND["navy_light"], "color": BRAND["text_grey"],
+    "border": "none", "borderBottom": f"2px solid transparent",
+    "fontFamily": BRAND["font"],
+}
+_TAB_SELECTED_STYLE = {
+    **_TAB_STYLE,
+    "color": BRAND["text_light"], "fontWeight": "600",
+    "borderBottom": f"2px solid {BRAND['blue']}",
+}
+
+
 def create_app(config=None):
     if config is None:
         config = load_config()
@@ -511,11 +524,37 @@ document.addEventListener('DOMContentLoaded', function() {
                                     ),
                                 ],
                             ),
-                            # Detail panel
+                            # Tabbed content area
+                            dcc.Tabs(
+                                id="panel-tabs",
+                                value="tab-detail",
+                                style={"flexShrink": "0"},
+                                colors={
+                                    "border": BRAND["border"],
+                                    "primary": BRAND["blue"],
+                                    "background": BRAND["navy_light"],
+                                },
+                                children=[
+                                    dcc.Tab(
+                                        label="Detail",
+                                        value="tab-detail",
+                                        style=_TAB_STYLE,
+                                        selected_style=_TAB_SELECTED_STYLE,
+                                    ),
+                                    dcc.Tab(
+                                        label="LLM Query",
+                                        value="tab-llm",
+                                        style=_TAB_STYLE,
+                                        selected_style={**_TAB_SELECTED_STYLE, "borderBottom": f"2px solid {BRAND['coral']}"},
+                                    ),
+                                ],
+                            ),
+                            # Detail tab content
                             html.Div(
                                 id="detail-panel",
                                 style={
                                     "flex": "1", "overflowY": "auto", "padding": "20px",
+                                    "display": "block",
                                 },
                                 children=[
                                     html.Div(
@@ -538,6 +577,25 @@ document.addEventListener('DOMContentLoaded', function() {
                                     )
                                 ],
                             ),
+                            # LLM tab content
+                            html.Div(
+                                id="llm-panel",
+                                style={
+                                    "flex": "1", "overflowY": "auto", "padding": "20px",
+                                    "display": "none",
+                                },
+                                children=[
+                                    html.Div(
+                                        style={"color": BRAND["text_grey"], "textAlign": "center", "marginTop": "80px"},
+                                        children=[
+                                            html.Div("Type a question and click Ask LLM", style={"fontSize": "14px", "marginBottom": "4px"}),
+                                            html.Div("Results will appear here", style={"fontSize": "12px", "opacity": "0.6"}),
+                                        ],
+                                    )
+                                ],
+                            ),
+                            # Store for LLM-matched node IDs
+                            dcc.Store(id="llm-matched-nodes", data=[]),
                         ],
                     ),
                     # Drag handle for resizing sidebar
@@ -601,10 +659,61 @@ document.addEventListener('DOMContentLoaded', function() {
         ],
     )
 
+    # --- Helpers ---
+
+    # All graph node IDs for matching LLM responses
+    all_node_ids = set(G.nodes())
+    all_node_ids_lower = {nid.lower(): nid for nid in all_node_ids}
+
+    def _find_mentioned_nodes(text):
+        """Find graph node names mentioned in LLM response text."""
+        matched = set()
+        text_lower = text.lower()
+        for name_lower, name in all_node_ids_lower.items():
+            if len(name_lower) > 2 and name_lower in text_lower:
+                matched.add(name)
+        return list(matched)
+
+    def _highlight_stylesheet(node_ids, color=BRAND["warning"]):
+        """Build stylesheet that highlights specific nodes."""
+        stylesheet = _build_stylesheet()
+        if not node_ids:
+            return stylesheet
+        stylesheet.append({"selector": "node", "style": {"opacity": 0.12, "font-size": "0px"}})
+        for nid in node_ids:
+            stylesheet.append({
+                "selector": f'node[id = "{nid}"]',
+                "style": {
+                    "opacity": 1.0, "border-width": "3px",
+                    "border-color": color, "border-opacity": 1.0,
+                    "shadow-blur": "20", "shadow-color": color,
+                    "shadow-opacity": 0.5,
+                    "font-size": "12px", "z-index": 9998,
+                },
+            })
+        stylesheet.append({"selector": "edge", "style": {"opacity": 0.03}})
+        return stylesheet
+
     # --- Callbacks ---
 
+    # Tab switching — show/hide detail vs LLM panels
+    @app.callback(
+        Output("detail-panel", "style"),
+        Output("llm-panel", "style"),
+        Input("panel-tabs", "value"),
+    )
+    def switch_tabs(tab):
+        detail_style = {"flex": "1", "overflowY": "auto", "padding": "20px"}
+        llm_style = {**detail_style}
+        if tab == "tab-detail":
+            return {**detail_style, "display": "block"}, {**llm_style, "display": "none"}
+        else:
+            return {**detail_style, "display": "none"}, {**llm_style, "display": "block"}
+
+    # Node/edge click → detail tab
     @app.callback(
         Output("detail-panel", "children"),
+        Output("panel-tabs", "value"),
         Input("graph", "tapNodeData"),
         Input("graph", "tapEdgeData"),
         prevent_initial_call=True,
@@ -613,23 +722,32 @@ document.addEventListener('DOMContentLoaded', function() {
         triggered = [t["prop_id"] for t in (callback_context.triggered or [])]
         triggered_str = " ".join(triggered)
         if "tapNodeData" in triggered_str and node_data:
-            return _render_node_detail(node_data, G, entity_chunks, text_chunks)
+            return _render_node_detail(node_data, G, entity_chunks, text_chunks), "tab-detail"
         elif "tapEdgeData" in triggered_str and edge_data:
-            return _render_edge_detail(edge_data)
-        return no_update
+            return _render_edge_detail(edge_data), "tab-detail"
+        return no_update, no_update
 
+    # Search → highlight nodes + show match count
     @app.callback(
         Output("graph", "stylesheet"),
         Input("search-btn", "n_clicks"),
         Input("clear-btn", "n_clicks"),
+        Input("llm-matched-nodes", "data"),
         State("search-input", "value"),
         prevent_initial_call=True,
     )
-    def handle_search(search_clicks, clear_clicks, search_text):
+    def handle_search(search_clicks, clear_clicks, llm_nodes, search_text):
         triggered = [t["prop_id"] for t in (callback_context.triggered or [])]
         triggered_str = " ".join(triggered)
+
         if "clear-btn" in triggered_str:
             return _build_stylesheet()
+
+        # LLM match highlighting (coral glow)
+        if "llm-matched-nodes" in triggered_str and llm_nodes:
+            return _highlight_stylesheet(llm_nodes, color=BRAND["coral"])
+
+        # Text search highlighting (gold glow)
         if not search_text or not search_text.strip():
             return _build_stylesheet()
         search_lower = search_text.lower()
@@ -640,24 +758,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 matching_ids.add(node_id)
         if not matching_ids:
             return _build_stylesheet()
-        stylesheet = _build_stylesheet()
-        stylesheet.append({"selector": "node", "style": {"opacity": 0.08, "font-size": "0px"}})
-        for nid in matching_ids:
-            stylesheet.append({
-                "selector": f'node[id = "{nid}"]',
-                "style": {
-                    "opacity": 1.0, "border-width": "3px",
-                    "border-color": BRAND["warning"], "border-opacity": 1.0,
-                    "shadow-blur": "20", "shadow-color": BRAND["warning"],
-                    "shadow-opacity": 0.5,
-                    "font-size": "12px", "z-index": 9998,
-                },
-            })
-        stylesheet.append({"selector": "edge", "style": {"opacity": 0.03}})
-        return stylesheet
+        return _highlight_stylesheet(matching_ids, color=BRAND["warning"])
 
+    # LLM query → llm-panel + matched nodes for highlighting
     @app.callback(
-        Output("detail-panel", "children", allow_duplicate=True),
+        Output("llm-panel", "children"),
+        Output("llm-matched-nodes", "data"),
+        Output("panel-tabs", "value", allow_duplicate=True),
         Input("llm-query-btn", "n_clicks"),
         State("search-input", "value"),
         prevent_initial_call=True,
@@ -671,8 +778,10 @@ document.addEventListener('DOMContentLoaded', function() {
     )
     def handle_llm_query(n_clicks, query_text):
         if not query_text or not query_text.strip():
-            return html.Div("Enter a question in the search box first.",
-                            style={"color": BRAND["error"], "padding": "12px"})
+            return (html.Div("Enter a question in the search box first.",
+                             style={"color": BRAND["error"], "padding": "12px"}),
+                    [], "tab-llm")
+
         header = _make_section_header("LLM Query Result", BRAND["coral"], icon="\u2728")
         query_display = html.Div(f'"{query_text}"', style={
             "color": BRAND["text_grey"], "fontSize": "13px",
@@ -691,12 +800,31 @@ document.addEventListener('DOMContentLoaded', function() {
             finally:
                 loop.run_until_complete(client.finalize())
                 loop.close()
-            return html.Div([header, query_display,
-                             dcc.Markdown(result, style={"lineHeight": "1.7", "fontSize": "14px"})])
+
+            matched_nodes = _find_mentioned_nodes(result)
+
+            # Build matched nodes badge
+            matched_badge = None
+            if matched_nodes:
+                matched_badge = html.Div(style={"marginBottom": "12px"}, children=[
+                    html.Span(f"{len(matched_nodes)} related nodes highlighted",
+                              style={
+                                  "fontSize": "11px", "color": BRAND["coral"],
+                                  "backgroundColor": f"{BRAND['coral']}22",
+                                  "padding": "4px 12px", "borderRadius": "12px",
+                              }),
+                ])
+
+            content = html.Div([header, query_display] +
+                               ([matched_badge] if matched_badge else []) +
+                               [dcc.Markdown(result, style={"lineHeight": "1.7", "fontSize": "14px"})])
+            return content, matched_nodes, "tab-llm"
+
         except Exception as e:
             logger.error("LLM query failed: %s", e, exc_info=True)
-            return html.Div([header, query_display,
-                             html.Div(f"Query failed: {e}", style={"color": BRAND["error"]})])
+            content = html.Div([header, query_display,
+                                html.Div(f"Query failed: {e}", style={"color": BRAND["error"]})])
+            return content, [], "tab-llm"
 
     @app.callback(Output("graph", "layout"), Input("layout-select", "value"))
     def update_layout(layout_name):
