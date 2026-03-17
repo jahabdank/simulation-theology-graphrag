@@ -829,11 +829,18 @@ document.addEventListener('DOMContentLoaded', function() {
             related_color=BRAND["peach"],
         )
 
+    # Switch to LLM tab when LLM results arrive
+    app.clientside_callback(
+        """function(data) { return "tab-llm"; }""",
+        Output("panel-tabs", "value", allow_duplicate=True),
+        Input("llm-matched-nodes", "data"),
+        prevent_initial_call=True,
+    )
+
     # LLM query → llm-panel + matched nodes for highlighting
     @app.callback(
         Output("llm-panel", "children"),
         Output("llm-matched-nodes", "data"),
-        Output("panel-tabs", "value", allow_duplicate=True),
         Input("llm-query-btn", "n_clicks"),
         State("search-input", "value"),
         prevent_initial_call=True,
@@ -849,7 +856,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if not query_text or not query_text.strip():
             return (html.Div("Enter a question in the search box first.",
                              style={"color": BRAND["error"], "padding": "12px"}),
-                    [], "tab-llm")
+                    [])
 
         header = _make_section_header("LLM Query Result", BRAND["coral"], icon="\u2728")
         query_display = html.Div(f'"{query_text}"', style={
@@ -887,13 +894,13 @@ document.addEventListener('DOMContentLoaded', function() {
             content = html.Div([header, query_display] +
                                ([matched_badge] if matched_badge else []) +
                                [dcc.Markdown(result, style={"lineHeight": "1.7", "fontSize": "14px"})])
-            return content, matched_nodes, "tab-llm"
+            return content, matched_nodes
 
         except Exception as e:
             logger.error("LLM query failed: %s", e, exc_info=True)
             content = html.Div([header, query_display,
                                 html.Div(f"Query failed: {e}", style={"color": BRAND["error"]})])
-            return content, [], "tab-llm"
+            return content, []
 
     @app.callback(Output("graph", "layout"), Input("layout-select", "value"))
     def update_layout(layout_name):
