@@ -7,7 +7,7 @@ from pathlib import Path
 
 import dash_cytoscape as cyto
 import networkx as nx
-from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
+from dash import Dash, DiskcacheManager, Input, Output, State, callback_context, dcc, html, no_update
 
 from .config import load_config
 
@@ -230,7 +230,12 @@ def create_app(config=None):
     total_nodes = G.number_of_nodes()
     total_edges = G.number_of_edges()
 
-    app = Dash(__name__)
+    # Background callback manager for long-running LLM queries
+    import diskcache
+    cache = diskcache.Cache(str(working_dir / ".dash_cache"))
+    background_callback_manager = DiskcacheManager(cache)
+
+    app = Dash(__name__, background_callback_manager=background_callback_manager)
 
     app.layout = html.Div(
         style={
@@ -441,13 +446,8 @@ def create_app(config=None):
                     ),
                 ],
             ),
-            # Loading overlay for LLM queries
-            dcc.Loading(
-                id="llm-loading",
-                type="circle",
-                children=html.Div(id="llm-output", style={"display": "none"}),
-                style={"position": "fixed", "top": "50%", "left": "50%"},
-            ),
+            # Hidden store for LLM loading state
+            dcc.Store(id="llm-loading-state", data=False),
         ],
     )
 
@@ -537,35 +537,67 @@ def create_app(config=None):
         Input("llm-query-btn", "n_clicks"),
         State("search-input", "value"),
         prevent_initial_call=True,
+        running=[
+            (Output("llm-query-btn", "disabled"), True, False),
+            (Output("llm-query-btn", "children"), "Querying...", "Ask LLM"),
+            (Output("llm-query-btn", "style"), {
+                "flex": "1", "padding": "8px",
+                "backgroundColor": "#666", "color": "white",
+                "border": "none", "borderRadius": "4px",
+                "cursor": "wait",
+            }, {
+                "flex": "1", "padding": "8px",
+                "backgroundColor": "#e94560", "color": "white",
+                "border": "none", "borderRadius": "4px",
+                "cursor": "pointer",
+            }),
+        ],
+        background=True,
+        manager=background_callback_manager,
     )
     def handle_llm_query(n_clicks, query_text):
-        """Run an LLM query against the knowledge graph."""
+        """Run an LLM query against the knowledge graph (background thread)."""
         if not query_text or not query_text.strip():
             return html.Div(
                 "Enter a question in the search box first.",
                 style={"color": "#e94560", "padding": "12px"},
             )
 
+        # Show loading state immediately
+        loading_header = [
+            html.H4(
+                "LLM Query Result",
+                style={"color": "#e94560", "marginBottom": "8px"},
+            ),
+            html.Div(
+                f'Query: "{query_text}"',
+                style={
+                    "color": "#888",
+                    "fontSize": "12px",
+                    "marginBottom": "12px",
+                    "fontStyle": "italic",
+                },
+            ),
+        ]
+
         try:
+            import asyncio
             from .client import STGraphRAGClient
 
             client = STGraphRAGClient()
-            result = client.query_sync(query_text, mode="hybrid")
 
-            return html.Div([
-                html.H4(
-                    "LLM Query Result",
-                    style={"color": "#e94560", "marginBottom": "8px"},
-                ),
-                html.Div(
-                    f'Query: "{query_text}"',
-                    style={
-                        "color": "#888",
-                        "fontSize": "12px",
-                        "marginBottom": "12px",
-                        "fontStyle": "italic",
-                    },
-                ),
+            # Run async query in a new event loop (safe from background thread)
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(client.initialize())
+                result = loop.run_until_complete(
+                    client.query(query_text, mode="hybrid")
+                )
+            finally:
+                loop.run_until_complete(client.finalize())
+                loop.close()
+
+            return html.Div(loading_header + [
                 html.Hr(style={"borderColor": "#333"}),
                 dcc.Markdown(
                     result,
@@ -576,11 +608,14 @@ def create_app(config=None):
                 ),
             ])
         except Exception as e:
-            logger.error("LLM query failed: %s", e)
-            return html.Div(
-                f"Query failed: {e}",
-                style={"color": "#e94560", "padding": "12px"},
-            )
+            logger.error("LLM query failed: %s", e, exc_info=True)
+            return html.Div(loading_header + [
+                html.Hr(style={"borderColor": "#333"}),
+                html.Div(
+                    f"Query failed: {e}",
+                    style={"color": "#e94560", "padding": "12px"},
+                ),
+            ])
 
     @app.callback(
         Output("graph", "layout"),

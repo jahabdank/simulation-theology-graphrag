@@ -211,3 +211,6 @@ lightrag_data/
 
 # Log files
 logs/
+
+# Dash background callback cache
+.dash_cache/
