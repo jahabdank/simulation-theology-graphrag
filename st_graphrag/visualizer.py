@@ -54,18 +54,30 @@ LAYOUT_OPTIONS = [
 
 # Custom CSS injected into the app for the resize handle and scrollbar styling
 _CUSTOM_CSS = """
-/* Resizable sidebar */
-#sidebar-container {
-    resize: horizontal;
-    overflow: hidden;
-    min-width: 300px;
-    max-width: 70vw;
+/* Drag handle between sidebar and graph */
+#drag-handle {
+    width: 6px;
+    cursor: col-resize;
+    background: #2A2D4A;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 20;
 }
-#sidebar-container::-webkit-resizer {
-    background: linear-gradient(135deg, transparent 40%, #6B8CFF 40%, #6B8CFF 45%, transparent 45%,
-                transparent 55%, #6B8CFF 55%, #6B8CFF 60%, transparent 60%,
-                transparent 70%, #6B8CFF 70%, #6B8CFF 75%, transparent 75%);
-    cursor: ew-resize;
+#drag-handle:hover, #drag-handle.dragging {
+    background: #6B8CFF;
+}
+#drag-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 1px;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 40px;
+    border-left: 1px solid #6B8CFF55;
+    border-right: 1px solid #6B8CFF55;
+    pointer-events: none;
 }
 
 /* Custom scrollbar */
@@ -333,6 +345,38 @@ def create_app(config=None):
 <body>
 {%app_entry%}
 <footer>{%config%}{%scripts%}{%renderer%}</footer>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        var handle = document.getElementById('drag-handle');
+        var sidebar = document.getElementById('sidebar-container');
+        if (!handle || !sidebar) return;
+        var dragging = false;
+        handle.addEventListener('mousedown', function(e) {
+            dragging = true;
+            handle.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var newWidth = e.clientX;
+            if (newWidth < 300) newWidth = 300;
+            if (newWidth > window.innerWidth * 0.7) newWidth = window.innerWidth * 0.7;
+            sidebar.style.width = newWidth + 'px';
+        });
+        document.addEventListener('mouseup', function() {
+            if (dragging) {
+                dragging = false;
+                handle.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        });
+    }, 1000);
+});
+</script>
 </body>
 </html>'''
 
@@ -494,17 +538,10 @@ def create_app(config=None):
                                     )
                                 ],
                             ),
-                            # Resize hint
-                            html.Div(
-                                "Drag edge to resize",
-                                style={
-                                    "textAlign": "center", "fontSize": "10px",
-                                    "color": BRAND["text_grey"], "padding": "4px",
-                                    "opacity": "0.5", "borderTop": f"1px solid {BRAND['border']}",
-                                },
-                            ),
                         ],
                     ),
+                    # Drag handle for resizing sidebar
+                    html.Div(id="drag-handle"),
                     # Graph area
                     html.Div(
                         style={"flex": "1", "position": "relative", "backgroundColor": BRAND["navy"]},
@@ -573,13 +610,11 @@ def create_app(config=None):
         prevent_initial_call=True,
     )
     def display_detail(node_data, edge_data):
-        ctx = callback_context
-        if not ctx.triggered:
-            return no_update
-        trigger = ctx.triggered[0]["prop_id"]
-        if "tapNodeData" in trigger and node_data:
+        triggered = [t["prop_id"] for t in (callback_context.triggered or [])]
+        triggered_str = " ".join(triggered)
+        if "tapNodeData" in triggered_str and node_data:
             return _render_node_detail(node_data, G, entity_chunks, text_chunks)
-        elif "tapEdgeData" in trigger and edge_data:
+        elif "tapEdgeData" in triggered_str and edge_data:
             return _render_edge_detail(edge_data)
         return no_update
 
@@ -591,11 +626,9 @@ def create_app(config=None):
         prevent_initial_call=True,
     )
     def handle_search(search_clicks, clear_clicks, search_text):
-        ctx = callback_context
-        if not ctx.triggered:
-            return no_update
-        trigger = ctx.triggered[0]["prop_id"]
-        if "clear-btn" in trigger:
+        triggered = [t["prop_id"] for t in (callback_context.triggered or [])]
+        triggered_str = " ".join(triggered)
+        if "clear-btn" in triggered_str:
             return _build_stylesheet()
         if not search_text or not search_text.strip():
             return _build_stylesheet()
