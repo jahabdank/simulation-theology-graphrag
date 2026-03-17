@@ -674,24 +674,85 @@ document.addEventListener('DOMContentLoaded', function() {
                 matched.add(name)
         return list(matched)
 
-    def _highlight_stylesheet(node_ids, color=BRAND["warning"]):
-        """Build stylesheet that highlights specific nodes."""
+    def _highlight_stylesheet(
+        node_ids,
+        primary_color=BRAND["coral"],
+        related_color=BRAND["blue"],
+        show_related=True,
+    ):
+        """Build stylesheet highlighting primary nodes and their neighbors.
+
+        Primary nodes: bright with glow in primary_color
+        Related (1-hop neighbors): visible with glow in related_color
+        Everything else: dimmed
+        """
         stylesheet = _build_stylesheet()
         if not node_ids:
             return stylesheet
-        stylesheet.append({"selector": "node", "style": {"opacity": 0.12, "font-size": "0px"}})
-        for nid in node_ids:
+
+        primary_set = set(node_ids)
+
+        # Find 1-hop neighbors
+        related_set = set()
+        if show_related:
+            for nid in primary_set:
+                if nid in G:
+                    for neighbor in G.neighbors(nid):
+                        if neighbor not in primary_set:
+                            related_set.add(neighbor)
+                    if hasattr(G, "predecessors"):
+                        for pred in G.predecessors(nid):
+                            if pred not in primary_set:
+                                related_set.add(pred)
+
+        # Dim everything
+        stylesheet.append({"selector": "node", "style": {"opacity": 0.08, "font-size": "0px"}})
+        stylesheet.append({"selector": "edge", "style": {"opacity": 0.03}})
+
+        # Primary nodes — bright with glow
+        for nid in primary_set:
             stylesheet.append({
                 "selector": f'node[id = "{nid}"]',
                 "style": {
                     "opacity": 1.0, "border-width": "3px",
-                    "border-color": color, "border-opacity": 1.0,
-                    "shadow-blur": "20", "shadow-color": color,
-                    "shadow-opacity": 0.5,
-                    "font-size": "12px", "z-index": 9998,
+                    "border-color": primary_color, "border-opacity": 1.0,
+                    "background-opacity": 1.0,
+                    "shadow-blur": "22", "shadow-color": primary_color,
+                    "shadow-opacity": 0.6,
+                    "font-size": "12px", "font-weight": "bold",
+                    "z-index": 9999,
                 },
             })
-        stylesheet.append({"selector": "edge", "style": {"opacity": 0.03}})
+
+        # Related nodes — visible with subtler glow
+        for nid in related_set:
+            stylesheet.append({
+                "selector": f'node[id = "{nid}"]',
+                "style": {
+                    "opacity": 0.85, "border-width": "2px",
+                    "border-color": related_color, "border-opacity": 0.8,
+                    "background-opacity": 0.8,
+                    "shadow-blur": "12", "shadow-color": related_color,
+                    "shadow-opacity": 0.35,
+                    "font-size": "10px",
+                    "z-index": 9998,
+                },
+            })
+
+        # Edges between visible nodes — show them
+        visible = primary_set | related_set
+        for u, v in G.edges():
+            if u in visible and v in visible:
+                # Edge color depends on whether it connects two primaries or primary-to-related
+                if u in primary_set and v in primary_set:
+                    ec = primary_color
+                else:
+                    ec = related_color
+                stylesheet.append({
+                    "selector": f'edge[source = "{u}"][target = "{v}"]',
+                    "style": {"opacity": 0.6, "line-color": ec, "target-arrow-color": ec, "width": 2},
+                })
+
         return stylesheet
 
     # --- Callbacks ---
@@ -743,11 +804,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if "clear-btn" in triggered_str:
             return _build_stylesheet()
 
-        # LLM match highlighting (coral glow)
+        # LLM match highlighting — coral primary, blue related
         if "llm-matched-nodes" in triggered_str and llm_nodes:
-            return _highlight_stylesheet(llm_nodes, color=BRAND["coral"])
+            return _highlight_stylesheet(
+                llm_nodes,
+                primary_color=BRAND["coral"],
+                related_color=BRAND["blue"],
+            )
 
-        # Text search highlighting (gold glow)
+        # Text search highlighting — orange primary, peach related
         if not search_text or not search_text.strip():
             return _build_stylesheet()
         search_lower = search_text.lower()
@@ -758,7 +823,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 matching_ids.add(node_id)
         if not matching_ids:
             return _build_stylesheet()
-        return _highlight_stylesheet(matching_ids, color=BRAND["warning"])
+        return _highlight_stylesheet(
+            matching_ids,
+            primary_color=BRAND["orange"],
+            related_color=BRAND["peach"],
+        )
 
     # LLM query → llm-panel + matched nodes for highlighting
     @app.callback(
