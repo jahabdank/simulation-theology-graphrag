@@ -155,16 +155,21 @@ app.add_middleware(
 async def get_graph():
     G = app.state.G
     degrees = dict(G.degree())
+    max_deg = max(degrees.values()) if degrees else 1
+    MIN_SIZE, MAX_SIZE = 2.0, 35.0
+    log_max = math.log1p(max_deg)
 
     nodes = []
     for node_id, data in G.nodes(data=True):
         deg = degrees.get(node_id, 0)
+        t = math.log1p(deg) / log_max if log_max > 0 else 0  # 0.0 to 1.0
+        size = MIN_SIZE + (MAX_SIZE - MIN_SIZE) * t
         nodes.append(GraphNode(
             id=node_id,
             entity_type=data.get("entity_type", "UNKNOWN"),
             description=data.get("description", ""),
             degree=deg,
-            size=18 + math.log1p(deg) * 13,
+            size=round(size, 1),
         ))
 
     edges = []

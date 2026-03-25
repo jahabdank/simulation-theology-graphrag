@@ -62,26 +62,24 @@ function GraphEvents({
   }, [graph]);
 
   // Register events
-  useRegisterEvents({
-    clickNode: (e) => {
-      onClickNode(e.node);
-      const pos = sigma.getNodeDisplayData(e.node);
-      if (pos) {
-        camera.animate(
-          { x: pos.x, y: pos.y, ratio: 0.4 },
-          { duration: 600 }
-        );
-      }
-    },
-    clickEdge: (e) => {
-      const source = graph.source(e.edge);
-      const target = graph.target(e.edge);
-      onClickEdge(e.edge, source, target);
-    },
-    enterNode: (e) => onHoverNode(e.node),
-    leaveNode: () => onHoverNode(null),
-    clickStage: () => onClickStage(),
-  });
+  const registerEvents = useRegisterEvents();
+
+  useEffect(() => {
+    registerEvents({
+      clickNode: (e: any) => {
+        onClickNode(e.node);
+        camera.gotoNode(e.node, { duration: 600 });
+      },
+      clickEdge: (e: any) => {
+        const source = graph.source(e.edge);
+        const target = graph.target(e.edge);
+        onClickEdge(e.edge, source, target);
+      },
+      enterNode: (e: any) => onHoverNode(e.node),
+      leaveNode: () => onHoverNode(null),
+      clickStage: () => onClickStage(),
+    });
+  }, [registerEvents, camera, graph, onClickNode, onClickEdge, onHoverNode, onClickStage]);
 
   // Enable edge events
   useEffect(() => {
@@ -100,7 +98,7 @@ function GraphEvents({
       return neighbors;
     };
 
-    sigma.setSetting("nodeReducer", (node, data) => {
+    sigma.setSetting("nodeReducer", (node: any, data: any) => {
       const res = { ...data };
 
       // Highlight state (search or LLM)
@@ -146,7 +144,7 @@ function GraphEvents({
       return res;
     });
 
-    sigma.setSetting("edgeReducer", (edge, data) => {
+    sigma.setSetting("edgeReducer", (edge: any, data: any) => {
       const res = { ...data };
       const source = graph.source(edge);
       const target = graph.target(edge);
@@ -189,7 +187,7 @@ function GraphEvents({
 
 export default function GraphView(props: GraphViewProps) {
   return (
-    <div style={{ flex: 1, position: "relative" }}>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <SigmaContainer
         graph={props.graph}
         className="sigma-container"
